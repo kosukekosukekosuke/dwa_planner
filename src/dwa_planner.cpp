@@ -149,6 +149,7 @@ void DWAPlanner::goal_callback(const geometry_msgs::PoseStampedConstPtr &msg)
     goal_ = *msg;
     try
     {
+        listener_.waitForTransform(robot_frame_, goal_.header.frame_id, ros::Time(0), ros::Duration(3.0));
         listener_.transformPose(robot_frame_, ros::Time(0), goal_, goal_.header.frame_id, goal_);
         goal_subscribed_ = true;
     }
@@ -421,8 +422,8 @@ geometry_msgs::Twist DWAPlanner::calc_cmd_vel(void)
 
     const Eigen::Vector3d goal(goal_.pose.position.x, goal_.pose.position.y, tf::getYaw(goal_.pose.orientation));
     const double angle_to_goal = atan2(goal.y(), goal.x());
-    if (M_PI / 4.0 < fabs(angle_to_goal))
-        use_speed_cost_ = true;
+    // if (M_PI / 4.0 < fabs(angle_to_goal))
+        // use_speed_cost_ = true;
 
     if (dist_to_goal_th_ < goal.segment(0, 2).norm() && !has_reached_)
     {
