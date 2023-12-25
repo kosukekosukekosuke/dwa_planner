@@ -12,6 +12,7 @@
     <arg name="use_path_cost" default="false"/>
     <arg name="robot_param" default="$(find dwa_planner)/config/robot_param.yaml"/>
     <arg name="dwa_param" default="$(find dwa_planner)/config/dwa_param.yaml"/>
+    <arg name="use_moving_obs_as_input" default="true"/>
     <!-- topic name -->
     <arg name="cmd_vel" default="/local_path/cmd_vel"/>
     <arg name="dist_to_goal_th" default="/dist_to_goal_th"/>
@@ -24,8 +25,8 @@
     <arg name="target_velocity" default="/target_velocity"/>
 
     <!-- run dwa_planner node -->
-    <node pkg="dwa_planner" type="dwa_planner" name="dwa_planner" ns="$(arg ns)">
-    <!-- <node pkg="dwa_planner" type="dwa_planner" name="dwa_planner" ns="$(arg ns)" output="screen"> -->
+    <!-- <node pkg="dwa_planner" type="dwa_planner" name="dwa_planner" ns="$(arg ns)"> -->
+    <node pkg="dwa_planner" type="dwa_planner" name="dwa_planner" ns="$(arg ns)" output="screen">
         <!-- param -->
         <rosparam command="load" file="$(arg robot_param)"/>
         <rosparam command="load" file="$(arg dwa_param)"/>
@@ -35,6 +36,7 @@
         <param name="USE_PATH_COST" value="$(arg use_path_cost)"/>
         <param name="SUBSCRIBE_COUNT_TH" value="$(arg subscribe_count_th)"/>
         <param name="SLEEP_TIME_AFTER_FINISH" value="$(arg sleep_time_after_finish)"/>
+        <param name="USE_MOVING_OBS_AS_INPUT" value="$(arg use_moving_obs_as_input)"/>
         <!-- topic name -->
         <remap from="/cmd_vel" to="$(arg cmd_vel)"/>
         <remap from="/dist_to_goal_th" to="$(arg dist_to_goal_th)"/>

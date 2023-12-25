@@ -27,6 +27,9 @@
 #include <vector>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
+#include <ros_gym_sfm/Actor.h>  // new
+#include <ros_gym_sfm/PredictedActor.h>  // new
+#include <geometry_msgs/PointStamped.h>  //new
 
 #include <Eigen/Dense>
 
@@ -313,6 +316,11 @@ public:
     std::vector<State>
     dwa_planning(const Eigen::Vector3d &goal, std::vector<std::pair<std::vector<State>, bool>> &trajectories);
 
+    void static_obs_callback(const ros_gym_sfm::ActorConstPtr &msg);  // new
+    void moving_obs_callback(const ros_gym_sfm::PredictedActorConstPtr &msg);  // new
+    float calc_obs_cost_1(const std::vector<State> &traj);  // new
+    float calc_obs_cost_2(const std::vector<State> &traj);  // new
+
 protected:
     std::string robot_frame_;
     double hz_;
@@ -358,6 +366,11 @@ protected:
     int local_map_not_subscribe_count_;
     int scan_not_subscribe_count_;
 
+    double obs_range_2_;  // new
+    double agent_radius_;  // new
+    double actor_radius_;  // new
+    bool use_moving_obs_as_input_;  // new
+
     ros::NodeHandle nh_;
     ros::NodeHandle local_nh_;
     ros::Publisher velocity_pub_;
@@ -374,11 +387,17 @@ protected:
     ros::Subscriber scan_sub_;
     ros::Subscriber target_velocity_sub_;
 
+    ros::Subscriber static_obs_sub_;  // new
+    ros::Subscriber moving_obs_sub_;  // new
+
     geometry_msgs::Twist current_cmd_vel_;
     geometry_msgs::PoseStamped goal_;
     geometry_msgs::PoseArray obs_list_;
     geometry_msgs::PolygonStamped footprint_;
     std::vector<geometry_msgs::PoseStamped> edge_points_on_path_;
+
+    ros_gym_sfm::Actor static_obs_list_;  // new
+    ros_gym_sfm::PredictedActor moving_obs_list_;  // new
 
     std_msgs::Bool has_finished_;
 

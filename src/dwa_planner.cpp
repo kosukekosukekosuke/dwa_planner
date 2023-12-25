@@ -45,6 +45,10 @@ DWAPlanner::DWAPlanner(void)
     local_nh_.param<int>("SUBSCRIBE_COUNT_TH", subscribe_count_th_, {3});
     local_nh_.param<int>("VELOCITY_SAMPLES", velocity_samples_, {3});
     local_nh_.param<int>("YAWRATE_SAMPLES", yawrate_samples_, {20});
+    local_nh_.param<double>("OBS_RANGE_2", obs_range_2_, {2.5});  // new
+    local_nh_.param<double>("agent/radius", agent_radius_, {0.25});  // new
+    local_nh_.param<double>("actor/radius", actor_radius_, {0.25});  // new
+    local_nh_.param<bool>("USE_MOVING_OBS_AS_INPUT", use_moving_obs_as_input_, {false});  // new
 
     ROS_INFO("=== DWA Planner ===");
     ROS_INFO_STREAM("ROBOT_FRAME: " << robot_frame_);
@@ -79,6 +83,10 @@ DWAPlanner::DWAPlanner(void)
     ROS_INFO_STREAM("SUBSCRIBE_COUNT_TH: " << subscribe_count_th_);
     ROS_INFO_STREAM("VELOCITY_SAMPLES: " << velocity_samples_);
     ROS_INFO_STREAM("YAWRATE_SAMPLES: " << yawrate_samples_);
+    ROS_INFO_STREAM("OBS_RANGE_2: " << obs_range_2_);  // new
+    ROS_INFO_STREAM("agent/radius: " << agent_radius_);  // new
+    ROS_INFO_STREAM("actor/radius: " << actor_radius_);  // new
+    ROS_INFO_STREAM("USE_MOVING_OBS_AS_INPUT: " << use_moving_obs_as_input_);  // new
 
     velocity_pub_ = nh_.advertise<geometry_msgs::Twist>("/cmd_vel", 1);
     candidate_trajectories_pub_ = local_nh_.advertise<visualization_msgs::MarkerArray>("candidate_trajectories", 1);
@@ -94,6 +102,8 @@ DWAPlanner::DWAPlanner(void)
     odom_sub_ = nh_.subscribe("/odom", 1, &DWAPlanner::odom_callback, this);
     scan_sub_ = nh_.subscribe("/scan", 1, &DWAPlanner::scan_callback, this);
     target_velocity_sub_ = nh_.subscribe("/target_velocity", 1, &DWAPlanner::target_velocity_callback, this);
+    static_obs_sub_ = nh_.subscribe("/ros_gym_sfm/actor_info", 1, &DWAPlanner::static_obs_callback, this);  // new
+    moving_obs_sub_ = nh_.subscribe("/ros_gym_sfm/prediction", 1, &DWAPlanner::moving_obs_callback, this);  // new
 
     if (!use_footprint_)
         footprint_subscribed_ = true;
@@ -218,6 +228,53 @@ void DWAPlanner::edge_on_global_path_callback(const nav_msgs::PathConstPtr &msg)
     }
 }
 
+// new
+void DWAPlanner::static_obs_callback(const ros_gym_sfm::ActorConstPtr &msg)
+{
+    static_obs_list_ = *msg;
+    try
+    {
+        for(int i=0; i<static_obs_list_.pose.points.size(); i++)
+        {
+            geometry_msgs::PointStamped base_point;
+            base_point.header.frame_id = static_obs_list_.header.frame_id;
+            base_point.point = static_obs_list_.pose.points[i];
+            listener_.transformPoint(robot_frame_, ros::Time(0),  base_point, base_point.header.frame_id, base_point);
+            static_obs_list_.pose.points[i] = base_point.point;
+            // static_obs_list_subscribed_ = true;
+        }
+    }
+    catch (tf::TransformException ex)
+    {
+        ROS_ERROR("%s", ex.what());
+    }
+}
+
+// new
+void DWAPlanner::moving_obs_callback(const ros_gym_sfm::PredictedActorConstPtr &msg)
+{
+    moving_obs_list_ = *msg;
+    try
+    {
+        for(int i=0; i<moving_obs_list_.timepose.markers.size(); i++)
+        {
+            for(int j=0; j<moving_obs_list_.timepose.markers[i].points.size(); j++)
+            {
+                geometry_msgs::PointStamped base_point;
+                base_point.header.frame_id = moving_obs_list_.header.frame_id;
+                base_point.point = moving_obs_list_.timepose.markers[i].points[j];
+                listener_.transformPoint(robot_frame_, ros::Time(0),  base_point, base_point.header.frame_id, base_point);
+                moving_obs_list_.timepose.markers[i].points[j] = base_point.point;
+                // moving_obs_list_subscribed_ = true;
+            }
+        }
+    }
+    catch (tf::TransformException ex)
+    {
+        ROS_ERROR("%s", ex.what());
+    }
+}
+
 std::vector<DWAPlanner::State>
 DWAPlanner::dwa_planning(const Eigen::Vector3d &goal, std::vector<std::pair<std::vector<State>, bool>> &trajectories)
 {
@@ -305,11 +362,11 @@ DWAPlanner::dwa_planning(const Eigen::Vector3d &goal, std::vector<std::pair<std:
         }
     }
 
-    ROS_INFO("===");
-    ROS_INFO_STREAM("(v, y) = (" << best_traj.front().velocity_ << ", " << best_traj.front().yawrate_ << ")");
-    min_cost.show();
-    ROS_INFO_STREAM("num of trajectories available: " << available_traj_count << " of " << trajectories.size());
-    ROS_INFO(" ");
+    // ROS_INFO("===");
+    // ROS_INFO_STREAM("(v, y) = (" << best_traj.front().velocity_ << ", " << best_traj.front().yawrate_ << ")");
+    // min_cost.show();
+    // ROS_INFO_STREAM("num of trajectories available: " << available_traj_count << " of " << trajectories.size());
+    // ROS_INFO(" ");
 
     return best_traj;
 }
@@ -530,13 +587,63 @@ float DWAPlanner::calc_obs_cost(const std::vector<State> &traj)
                 dist = calc_dist_from_robot(obs.position, state);
             else
                 dist = hypot((state.x_ - obs.position.x), (state.y_ - obs.position.y));
-
+            ROS_INFO_STREAM("distance_0 = " << dist);
+            
             if (dist < DBL_EPSILON)
                 return 1e6;
             min_dist = std::min(min_dist, dist);
         }
     }
     return obs_range_ - min_dist;
+}
+
+// new
+// for static_obs_list
+float DWAPlanner::calc_obs_cost_1(const std::vector<State> &traj)
+{
+    float min_dist = obs_range_2_;
+    for (const auto &state : traj)
+    {
+        for (const auto &obs : static_obs_list_.pose.points)
+        {
+            float dist;
+            dist = hypot((state.x_ - obs.x), (state.y_ - obs.y)) - agent_radius_;
+            // ROS_INFO_STREAM("distance_1 = " << dist);
+
+            if (dist < DBL_EPSILON)
+                return 1e6;
+            min_dist = std::min(min_dist, dist);
+        }
+    }
+    return obs_range_2_ - min_dist;
+}
+
+// new
+// for moving_obs_list
+float DWAPlanner::calc_obs_cost_2(const std::vector<State> &traj)
+{
+    float min_dist = obs_range_2_;
+    for (int i=0; i<traj.size(); i++)
+    {
+        for (int j=0; j<moving_obs_list_.timepose.markers.size(); j++)
+        {
+            if(i==j)
+            {
+                for (int h=0; h<moving_obs_list_.timepose.markers[j].points.size(); h++)
+                {
+                    float dist;
+                    dist = hypot((traj[i].x_ - moving_obs_list_.timepose.markers[j].points[h].x),
+                            (traj[i].y_ - moving_obs_list_.timepose.markers[j].points[h].y)) - (agent_radius_ + actor_radius_);
+                    // ROS_INFO_STREAM("distance_2 = " << dist);
+
+                    if (dist < DBL_EPSILON)
+                        return 1e6;
+                    min_dist = std::min(min_dist, dist);
+                }
+            }
+        }
+    }
+    return obs_range_2_ - min_dist;
 }
 
 float DWAPlanner::calc_speed_cost(const std::vector<State> &traj)
@@ -600,7 +707,11 @@ DWAPlanner::Cost DWAPlanner::evaluate_trajectory(const std::vector<State> &traje
 {
     Cost cost;
     cost.to_goal_cost_ = calc_to_goal_cost(trajectory, goal);
-    cost.obs_cost_ = calc_obs_cost(trajectory);
+    if (!use_moving_obs_as_input_)
+    // cost.obs_cost_ = calc_obs_cost(trajectory);
+        cost.obs_cost_ = calc_obs_cost_1(trajectory);
+    else
+        cost.obs_cost_ = calc_obs_cost_2(trajectory);
     cost.speed_cost_ = calc_speed_cost(trajectory);
     cost.path_cost_ = calc_path_cost(trajectory);
     cost.calc_total_cost();
