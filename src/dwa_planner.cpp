@@ -607,7 +607,7 @@ float DWAPlanner::calc_obs_cost_1(const std::vector<State> &traj)
         for (const auto &obs : static_obs_list_.pose.points)
         {
             float dist;
-            dist = hypot((state.x_ - obs.x), (state.y_ - obs.y)) - agent_radius_;
+            dist = hypot((state.x_ - obs.x), (state.y_ - obs.y)) - (agent_radius_ + actor_radius_);
             // ROS_INFO_STREAM("distance_1 = " << dist);
 
             if (dist < DBL_EPSILON)

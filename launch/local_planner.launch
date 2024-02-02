@@ -12,7 +12,7 @@
     <arg name="use_path_cost" default="false"/>
     <arg name="robot_param" default="$(find dwa_planner)/config/robot_param.yaml"/>
     <arg name="dwa_param" default="$(find dwa_planner)/config/dwa_param.yaml"/>
-    <arg name="use_moving_obs_as_input" default="true"/>
+    <arg name="use_moving_obs_as_input" default="false"/>
     <!-- topic name -->
     <arg name="cmd_vel" default="/local_path/cmd_vel"/>
     <arg name="dist_to_goal_th" default="/dist_to_goal_th"/>
